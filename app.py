@@ -1,9 +1,19 @@
 from langchain_community.llms import Ollama
 from crewai import Crew, Task, Agent
+from crewai.tools import BaseTool
 from langchain_community.tools import DuckDuckGoSearchRun
+import json
 
-model=Ollama(model="deepseek-r1")
-search_tool=DuckDuckGoSearchRun()
+class SearchTool(BaseTool):
+    name:str = "DuckDuckGo Search Tool"
+    description:str = "Search the web for information"
+    def _run(self, query:str) -> str:
+        search = DuckDuckGoSearchRun()
+        result = search.invoke(query)
+        return result
+    
+
+model=Ollama(model="ollama/deepseek-r1")
 analyer=Agent(
     role="Input Analyzer",
     goal="Extract topic,level and goal from the input",
@@ -15,7 +25,7 @@ searcher=Agent(
     role="Research Assistant",
     goal="Find the best resources for the topic and level",
     backstory="You are a research assistant, finding the best open source resources for the topic and levelin order to help the user achieve their goal",
-    tools=[search_tool],
+    tools=[SearchTool()],
     llm=model,
     verbose=True
 )
@@ -44,32 +54,40 @@ user_input=input("What do you want to learn?")
 analyze_task=Task(
     agent=analyer,
     description=f"Parse the user input:{user_input}",
-    expected_output="JSON:{topic: string, level: string, goal: string}",
+    expected_output="{topic: string, level: string, goal: string}",
 )
+fcrew=Crew(
+    agents=[analyer],
+    tasks=[analyze_task],
+    verbose=True,
+)
+fresult=fcrew.kickoff()
+foutput=json.loads(fresult.raw)
+
 search_task=Task(
     agent=searcher,
-    description=f"Find 4-5 free resources for the {analyze_task.expected_output["topic"]} in the {analyze_task.expected_output["level"]} level in order to help the user achieve their goal:{analyze_task.expected_output["goal"]}",
+    description=f"Find 4-5 free resources for the {foutput['topic']} in the {foutput['level']} level in order to help the user achieve their goal:{foutput['goal']}",
     expected_output="List:[{url: string, title: string, description: string}](4-5 items)",
 )
 design_task=Task(
     agent=designer,
-    description=f"Create a 4 week learning path for the {analyze_task.expected_output["topic"]} from {analyze_task.expected_output["level"]} level to the goal:{analyze_task.expected_output["goal"]}",
+    description=f"Create a 4 week learning path for the {foutput['topic']} from {foutput['level']} level to the goal:{foutput['goal']}",
     expected_output="List:[{week: int, title: string, topics: string, description: string}](4 items)",
     )
 project_task=Task(
     agent=project,
-    description=f"Generate 3-4 project ideas for the {analyze_task.expected_output["topic"]} in the {analyze_task.expected_output["level"]} level in order to help the user achieve their goal:{analyze_task.expected_output["goal"]}",
+    description=f"Generate 3-4 project ideas for the {foutput['topic']} in the {foutput['level']} level in order to help the user achieve their goal:{foutput['goal']}",
     expected_output="List:[{title: string, description: string}](3-4 items)",
 )
 formatter_task=Task(
     agent=formatter,
-    description=f"Format the outputs into a clean and readable markdown file",
+    description="Format the outputs into a clean and readable markdown file",
     expected_output="Markdown file with the following sections: Topic, Goal, Resources, Learning Path, Projects",
 )
 crew=Crew(
-    agents=[analyer,searcher,project,designer,formatter],
-    tasks=[analyze_task,search_task,design_task,project_task,formatter_task],
-    verbose=2,
+    agents=[searcher,project,designer,formatter],
+    tasks=[search_task,design_task,project_task,formatter_task],
+    verbose=True,
 )
 result=crew.kickoff()
 with open("output.md", "w") as f:
