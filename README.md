@@ -1,4 +1,4 @@
-# Simple_Learner
+# Education Guide
 
 A command-line application that generates tailored educational roadmaps based on user input, using CrewAI and DeepSeek-R1 8B to orchestrate AI agents for parsing, researching, curriculum design, project suggestions, and output formatting.
 
